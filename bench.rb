@@ -3,7 +3,21 @@
 
 require 'benchmark'
 require 'httpx'
-require 'manticore'
+
+manticore = false
+
+begin
+  require 'manticore'
+  manticore = Manticore::Client.new
+rescue LoadError
+end
+
+curb = false
+begin
+  require 'curb'
+  curl = Curl
+rescue LoadError
+end
 
 uri = 'http://127.0.0.1:3000/echo'
 runs = 5000
@@ -22,50 +36,54 @@ headers = {
   'Content-Type' => 'application/json',
 }.freeze
 
+puts "Environment: #{`uname -v`.chomp}"
+
+if RUBY_PLATFORM == 'java'
 puts <<EOC
-Environment: #{`uname -v`.chomp}
  JRuby:      #{JRUBY_VERSION}
  JVM:        #{ENV_JAVA['java.runtime.version']}
  JRUBY_OPTS: #{ENV['JRUBY_OPTS']}
- HTTPX:      #{HTTPX::VERSION}
  Manticore:  #{Manticore::VERSION}
+EOC
+else
+  puts <<EOC
+ Ruby:       #{RUBY_VERSION}
+ Curb:       #{Curl::VERSION}
+EOC
+end
 
-Test: echo of #{query.bytesize} bytes
+puts <<EOC
+ HTTPX:      #{HTTPX::VERSION}
+ Test: echo of #{query.bytesize} bytes
  URI:      #{uri}
  Requests: #{runs}
 --------------------------------------
 
 EOC
 
-manticore = Manticore::Client.new
 httpx = HTTPX.with(headers: headers)
-
-bytes_manticore = 0
-bytes_httpx = 0
-bytes_expected = query.bytesize * runs * 2
 
 Benchmark.bmbm do |x|
   x.report('httpx') do
     runs.times do
-      bytes_httpx += httpx.post(uri, body: query).to_s.bytesize
+      raise "Mismatch" if httpx.post(uri, body: query).to_s != query
     end
   end
 
   x.report('manticore') do
     runs.times do
       manticore.post(uri, headers: headers, body: query) do |response|
-        bytes_manticore += response.read_body.bytesize
+        raise "Mismatch" if response.read_body != query
       end
     end
-	end
-end
+  end if manticore
 
-def assert_bytes(server, expected, actual)
-  warn "#{server}: #{expected} != #{actual} bytes" unless expected == actual
-end
-
-at_exit do
-  assert_bytes("manticore", bytes_expected, bytes_manticore)
-  assert_bytes("httpx", bytes_expected, bytes_httpx)
+  x.report('curb') do
+    runs.times do
+      raise "Mismatch" if (curl.post(uri, query) do |request|
+        request.headers = headers
+      end.body != query)
+    end
+  end if curl
 end
 
