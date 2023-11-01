@@ -4,21 +4,6 @@
 require 'benchmark'
 require 'httpx'
 
-manticore = false
-
-begin
-  require 'manticore'
-  manticore = Manticore::Client.new
-rescue LoadError
-end
-
-curb = false
-begin
-  require 'curb'
-  curl = Curl
-rescue LoadError
-end
-
 uri = 'http://127.0.0.1:3000/echo'
 runs = 5000
 query = <<EOC
@@ -35,6 +20,22 @@ headers = {
   'User-Agent' => 'elasticsearch-ruby/8.10.0; elastic-transport-ruby/8.3.0; RUBY_VERSION: 3.1.4;',
   'Content-Type' => 'application/json',
 }.freeze
+
+httpx = HTTPX
+
+manticore = begin
+  require 'manticore'
+  Manticore::Client.new(keepalive: false)
+rescue LoadError
+end
+
+curl = begin
+  require 'curb'
+  Curl::Easy.new do |c|
+    c.setopt(Curl::CURLOPT_FORBID_REUSE, 1)
+  end
+rescue LoadError
+end
 
 puts "Environment: #{`uname -v`.chomp}"
 
@@ -61,14 +62,12 @@ puts <<EOC
 
 EOC
 
-httpx = HTTPX.with(headers: headers)
-
 Benchmark.bmbm do |x|
   x.report('httpx') do
     runs.times do
-      raise "Mismatch" if httpx.post(uri, body: query).to_s != query
+      raise "Mismatch" if httpx.post(uri, headers: headers, body: query).to_s != query
     end
-  end
+  end if httpx
 
   x.report('manticore') do
     runs.times do
@@ -80,10 +79,11 @@ Benchmark.bmbm do |x|
 
   x.report('curb') do
     runs.times do
-      raise "Mismatch" if (curl.post(uri, query) do |request|
-        request.headers = headers
-      end.body != query)
+      curl.url = uri
+      curl.headers = headers
+      curl.http_post(query)
+      raise "Mismatch" if curl.body_str != query
     end
   end if curl
-end
+end while true
 
