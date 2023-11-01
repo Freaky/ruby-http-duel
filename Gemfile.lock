@@ -3,7 +3,7 @@ GEM
   specs:
     curb (1.0.5)
     http-2-next (1.0.1)
-    httpx (1.0.2)
+    httpx (1.1.0)
       http-2-next (>= 1.0.1)
     manticore (0.9.1-java)
       openssl_pkcs8_pure
@@ -11,11 +11,12 @@ GEM
 
 PLATFORMS
   universal-java-17
+  universal-java-21
   x86_64-freebsd-13
 
 DEPENDENCIES
   curb (~> 1.0)
-  httpx (~> 1.0)
+  httpx (~> 1.1)
   manticore (~> 0.9.1)
 
 BUNDLED WITH
